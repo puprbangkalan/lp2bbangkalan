@@ -3,284 +3,559 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>WebGIS LP2B Bangkalan</title>
+  <title>WebGIS PMTiles</title>
 
-  <!-- MapLibre GL JS -->
+  <!-- MapLibre GL -->
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-
-  <!-- PMTiles JS -->
+  <!-- PMTiles -->
   <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
-
-  <!-- Turf.js untuk Pengukuran Geospasial -->
+  <!-- Turf.js -->
   <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #map { position: absolute; inset: 0; }
 
-    /* Floating Toolbar di Bawah */
-    .floating-toolbar {
-      position: fixed;
-      bottom: 20px;
+    /* ── Floating Bottom Toolbar ── */
+    .toolbar {
+      position: absolute;
+      bottom: 28px;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 100;
+      display: flex;
+      gap: 12px;
+      z-index: 10;
+    }
+    .tool-btn {
+      width: 54px; height: 54px;
+      border-radius: 18px;
       background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      padding: 6px 12px;
-      border-radius: 30px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      border: none;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      transition: all 0.15s ease;
+      color: #334155;
     }
+    .tool-btn:hover { transform: scale(1.08); background: #f1f5f9; }
+    .tool-btn:active { transform: scale(0.95); }
+    .tool-btn.active {
+      background: #2563eb;
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+    }
+    .tool-btn svg { width: 26px; height: 26px; pointer-events: none; }
 
-    .tool-btn {
-      background: transparent;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 20px;
+    /* ── Layer Panel (top-right) ── */
+    .layer-panel {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: rgba(255, 255, 255, 0.93);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 16px 20px;
+      z-index: 10;
+      min-width: 195px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13);
+    }
+    .layer-panel h3 {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #94a3b8;
+      letter-spacing: 1.2px;
+      margin-bottom: 12px;
+    }
+    .layer-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
       cursor: pointer;
       font-size: 13px;
-      font-weight: 600;
-      color: #334155;
+      color: #1e293b;
+      user-select: none;
+    }
+    .layer-item input[type="checkbox"] {
+      width: 17px; height: 17px;
+      accent-color: #2563eb;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .swatch {
+      width: 14px; height: 14px;
+      border-radius: 4px;
+      border: 1.5px solid rgba(0, 0, 0, 0.1);
+      flex-shrink: 0;
+    }
+
+    /* ── Go-To Panel (top-left) ── */
+    .goto-panel {
+      position: absolute;
+      top: 16px; left: 16px;
+      background: rgba(255, 255, 255, 0.93);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 14px 16px;
+      z-index: 10;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13);
+    }
+    .goto-panel h3 {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #94a3b8;
+      letter-spacing: 1.2px;
+      margin-bottom: 10px;
+    }
+    .goto-row {
       display: flex;
-      align-items: center;
       gap: 6px;
-      transition: all 0.2s ease;
+      margin-bottom: 8px;
     }
-
-    .tool-btn:hover { background: #f1f5f9; }
-    .tool-btn.active { background: #2563eb; color: #ffffff; }
-
-    /* Popover Modal List Layer & Hasil Ukur */
-    .popover-panel {
-      position: fixed;
-      bottom: 75px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 99;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(8px);
-      padding: 14px;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-      width: 280px;
-      display: none;
+    .goto-row input {
+      width: 85px;
+      padding: 7px 10px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
     }
-
-    .popover-panel.show { display: block; }
-    .panel-header { font-weight: 700; font-size: 13px; color: #475569; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-
-    /* Checkbox Layer List */
-    .layer-item { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; color: #1e293b; cursor: pointer; }
-    .layer-item input { cursor: pointer; width: 16px; height: 16px; }
-
-    /* Badge Hasil Pengukuran */
-    .measure-badge {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 100;
-      background: #0f172a;
-      color: #ffffff;
+    .goto-row input:focus { border-color: #2563eb; }
+    .goto-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
       padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 600;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    .goto-btn:hover { background: #1d4ed8; }
+
+    /* ── Measure Result Bar ── */
+    .measure-bar {
+      position: absolute;
+      bottom: 98px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 10;
       display: none;
+      white-space: nowrap;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 520px) {
+      .layer-panel {
+        top: 70px; right: 12px;
+        min-width: 165px;
+        padding: 12px 14px;
+      }
+      .goto-panel {
+        top: 12px; left: 12px;
+        padding: 12px 14px;
+      }
+      .goto-row input { width: 72px; }
+      .tool-btn { width: 48px; height: 48px; border-radius: 15px; }
+      .tool-btn svg { width: 22px; height: 22px; }
+      .toolbar { bottom: 20px; gap: 10px; }
     }
   </style>
 </head>
 <body>
 
-  <!-- Map Container -->
-  <div id="map"></div>
+<div id="map"></div>
 
-  <!-- Badge Hasil Ukur -->
-  <div id="measure-badge" class="measure-badge">Klik pada peta untuk mulai mengukur</div>
-
-  <!-- Panel List Layer -->
-  <div id="layer-panel" class="popover-panel">
-    <div class="panel-header">🥞 Daftar Layer</div>
-    <label class="layer-item">
-      <input type="checkbox" id="chk-esri" checked onchange="toggleLayerVisibility('basemap-esri-layer')">
-      Esri Satellite World Imagery
-    </label>
-    <label class="layer-item">
-      <input type="checkbox" id="chk-pmtiles-fill" checked onchange="toggleLayerVisibility('pmtiles-fill-layer')">
-      Area LP2B (Poligon)
-    </label>
-    <label class="layer-item">
-      <input type="checkbox" id="chk-pmtiles-line" checked onchange="toggleLayerVisibility('pmtiles-line-layer')">
-      Batas Lahan (Garis)
-    </label>
+<!-- ════════════════════════════════════════════ -->
+<!--  GO-TO KOORDINAT (top-left)                  -->
+<!-- ════════════════════════════════════════════ -->
+<div class="goto-panel">
+  <h3>📍 Koordinat</h3>
+  <div class="goto-row">
+    <input type="number" id="input-lat" placeholder="Latitude" step="any" />
+    <input type="number" id="input-lng" placeholder="Longitude" step="any" />
   </div>
+  <button class="goto-btn" onclick="goToCoordinate()">Terbang ke Lokasi</button>
+</div>
 
-  <!-- Floating Toolbar -->
-  <div class="floating-toolbar">
-    <!-- Penggaris Batang (Jarak) -->
-    <button class="tool-btn" id="btn-dist" onclick="setMeasureMode('length')" title="Ukur Jarak">
-      🥢 Jarak
-    </button>
-    <!-- Penggaris Segitiga (Luas) -->
-    <button class="tool-btn" id="btn-area" onclick="setMeasureMode('area')" title="Ukur Luas">
-      📐 Luas
-    </button>
-    <!-- Hapus Ukuran -->
-    <button class="tool-btn" onclick="clearMeasurement()" title="Hapus Ukuran">
-      🧹 Hapus
-    </button>
-    <!-- List Layer -->
-    <button class="tool-btn" id="btn-layer" onclick="toggleLayerPanel()" title="Daftar Layer">
-      🥞 Layer
-    </button>
-  </div>
+<!-- ════════════════════════════════════════════ -->
+<!--  LAYER PANEL (top-right)                     -->
+<!-- ════════════════════════════════════════════ -->
+<div class="layer-panel">
+  <h3>🗺️ Layers</h3>
 
-  <script>
-    // Fix CORS: Gunakan CDN jsDelivr untuk memanggil file Release dari GitHub
-    const PMTILES_URL = "https://cdn.jsdelivr.net/gh/puprbangkalan/lp2bbangkalan@v.1.0/peta_zoom18_20.pmtiles";
+  <label class="layer-item">
+    <input type="checkbox" checked
+           onchange="toggleLayer('basemap-layer', this.checked)" />
+    <div class="swatch" style="background:#3d5c34;"></div>
+    <span>Esri Satellite</span>
+  </label>
 
-    // Inisialisasi Protocol PMTiles
-    const protocol = new pmtiles.Protocol();
-    maplibregl.addProtocol("pmtiles", protocol.tile);
+  <label class="layer-item">
+    <input type="checkbox" checked
+           onchange="toggleLayer('pmtiles-fill', this.checked)" />
+    <div class="swatch" style="background:#0284c7;"></div>
+    <span>PMTiles Area</span>
+  </label>
 
-    const map = new maplibregl.Map({
-      container: 'map',
-      style: {
-        version: 8,
-        sources: {
-          'basemap-esri': {
-            type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-            tileSize: 256,
-            maxzoom: 19,
-            attribution: 'Tiles &copy; Esri ; Dinas PUPR Bangkalan'
-          }
-        },
-        layers: [
-          {
-            id: 'basemap-esri-layer',
-            type: 'raster',
-            source: 'basemap-esri',
-            minzoom: 0,
-            maxzoom: 22
-          }
-        ]
-      },
-      center: [112.74, -7.02], // Koordinat Bangkalan
-      zoom: 18
-    });
+  <label class="layer-item">
+    <input type="checkbox" checked
+           onchange="toggleLayer('pmtiles-line', this.checked)" />
+    <div class="swatch" style="background:#0369a1;"></div>
+    <span>PMTiles Garis</span>
+  </label>
 
-    // Control Navigasi dan GPS
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right');
+  <label class="layer-item">
+    <input type="checkbox" checked
+           onchange="toggleLayer('pmtiles-label', this.checked)" />
+    <div class="swatch" style="background:#e11d48;"></div>
+    <span>PMTiles Label</span>
+  </label>
+</div>
 
-    map.on('load', () => {
-      // Source PMTiles
-      map.addSource('source-pmtiles', {
-        type: 'vector',
-        url: `pmtiles://${PMTILES_URL}`
-      });
+<!-- ════════════════════════════════════════════ -->
+<!--  BOTTOM TOOLBAR                              -->
+<!-- ════════════════════════════════════════════ -->
+<div class="toolbar">
 
-      // Layer Isian (Fill LP2B)
-      map.addLayer({
-        'id': 'pmtiles-fill-layer',
-        'type': 'fill',
-        'source': 'source-pmtiles',
-        'source-layer': 'temp_data',
-        'minzoom': 18,
-        'paint': {
-          'fill-color': '#22c55e',
-          'fill-opacity': 0.5
-        }
-      });
+  <!-- Penggaris Batang → Ukur Jarak -->
+  <button class="tool-btn" id="btn-distance"
+          onclick="toggleMeasure('distance')" title="Ukur Jarak">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round">
+      <rect x="2" y="8.5" width="20" height="7" rx="1.2"/>
+      <line x1="6"  y1="8.5" x2="6"  y2="12"/>
+      <line x1="9"  y1="8.5" x2="9"  y2="13"/>
+      <line x1="12" y1="8.5" x2="12" y2="12"/>
+      <line x1="15" y1="8.5" x2="15" y2="13"/>
+      <line x1="18" y1="8.5" x2="18" y2="12"/>
+    </svg>
+  </button>
 
-      // Layer Garis Tepi
-      map.addLayer({
-        'id': 'pmtiles-line-layer',
-        'type': 'line',
-        'source': 'source-pmtiles',
-        'source-layer': 'temp_data',
-        'minzoom': 18,
-        'paint': {
-          'line-color': '#15803d',
-          'line-width': 1.5
-        }
-      });
+  <!-- Penggaris Segitiga → Ukur Luas -->
+  <button class="tool-btn" id="btn-area"
+          onclick="toggleMeasure('area')" title="Ukur Luas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 20 L21 20 L4 5 Z"/>
+      <line x1="8"  y1="20" x2="8"  y2="17"/>
+      <line x1="11" y1="20" x2="11" y2="18"/>
+      <line x1="14" y1="20" x2="14" y2="17"/>
+      <line x1="17" y1="20" x2="17" y2="18"/>
+    </svg>
+  </button>
 
-      initMeasureLayers();
-    });
+</div>
 
-    // Toggle Tampilan Layer
-    function toggleLayerVisibility(layerId) {
-      const visibility = map.getLayoutProperty(layerId, 'visibility');
-      if (visibility === 'none') {
-        map.setLayoutProperty(layerId, 'visibility', 'visible');
-      } else {
-        map.setLayoutProperty(layerId, 'visibility', 'none');
+<!-- ════════════════════════════════════════════ -->
+<!--  MEASURE RESULT                              -->
+<!-- ════════════════════════════════════════════ -->
+<div class="measure-bar" id="measure-bar"></div>
+
+
+<script>
+// =============================================
+//  1. PMTiles Protocol
+// =============================================
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+
+// =============================================
+//  2. URL PMTiles
+//  ⚠️  Ganti dengan URL proxy Cloudflare Worker
+//      atau hosting yang mendukung CORS
+//
+//  Contoh: "https://pmtiles-proxy.xxxxx.workers.dev/peta_zoom18_20.pmtiles"
+//
+//  Jika pakai Cloudflare R2 / Vercel / Netlify,
+//  cukup pakai URL langsung file .pmtiles-nya.
+// =============================================
+const PMTILES_URL =
+  "https://pmtiles-proxy.xxxxx.workers.dev/peta_zoom18_20.pmtiles";
+
+// Nama source-layer di dalam PMTiles
+// (cek dengan: pmtiles show file.pmtiles)
+const SOURCE_LAYER = "temp_data";
+
+// =============================================
+//  3. Inisialisasi Peta — Esri Satellite
+// =============================================
+const map = new maplibregl.Map({
+  container: "map",
+  style: {
+    version: 8,
+    sources: {
+      "basemap-esri": {
+        type: "raster",
+        tiles: [
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        ],
+        tileSize: 256,
+        attribution: "Tiles &copy; Esri; Dinas PUPR Bangkalan"
       }
-    }
-
-    function toggleLayerPanel() {
-      const panel = document.getElementById('layer-panel');
-      panel.classList.toggle('show');
-      document.getElementById('btn-layer').classList.toggle('active', panel.classList.contains('show'));
-    }
-
-    // Fitur Pengukuran Geospasial
-    let measureMode = null;
-    let measurePoints = [];
-
-    function initMeasureLayers() {
-      map.addSource('measure-geojson', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-
-      map.addLayer({
-        id: 'measure-lines',
-        type: 'line',
-        source: 'measure-geojson',
-        paint: { 'line-color': '#f59e0b', 'line-width': 3, 'line-dasharray': [2, 1] }
-      });
-
-      map.addLayer({
-        id: 'measure-fills',
-        type: 'fill',
-        source: 'measure-geojson',
-        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.25 }
-      });
-
-      map.addLayer({
-        id: 'measure-points',
-        type: 'circle',
-        source: 'measure-geojson',
-        paint: { 'circle-radius': 5, 'circle-color': '#d97706' }
-      });
-    }
-
-    function setMeasureMode(mode) {
-      if (measureMode === mode) {
-        setMeasureMode(null);
-        return;
+    },
+    layers: [
+      {
+        id: "basemap-layer",
+        type: "raster",
+        source: "basemap-esri",
+        minzoom: 0,
+        maxzoom: 19
       }
+    ]
+  },
+  center: [112.74, -7.02],
+  zoom: 16
+});
 
-      measureMode = mode;
-      measurePoints = [];
-      
-      document.getElementById('btn-dist').classList.toggle('active', mode === 'length');
-      document.getElementById('btn-area').classList.toggle('active', mode === 'area');
-      
-      const badge = document.getElementById('measure-badge');
-      if (mode) {
-        badge.style.display = 'block';
-        badge.innerText = mode === 'length' ? 'Mode Jarak: Klik beberapa titik di peta' : 'Mode Luas: Klik minimal 3 titik di peta';
-        map.getCanvas().style.cursor = 'crosshair';
-      } else {
-        badge.style.display = 'none';
-        map.getCanvas().style.cursor = '';
+map.addControl(new maplibregl.NavigationControl(), "top-right");
+map.addControl(
+  new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showAccuracyCircle: true
+  }),
+  "top-right"
+);
+
+// =============================================
+//  4. Load PMTiles Layers
+// =============================================
+map.on("load", () => {
+  // Source
+  map.addSource("pmtiles-src", {
+    type: "vector",
+    url: `pmtiles://${PMTILES_URL}`
+  });
+
+  // Fill (poligon)
+  map.addLayer({
+    id: "pmtiles-fill",
+    type: "fill",
+    source: "pmtiles-src",
+    "source-layer": SOURCE_LAYER,
+    minzoom: 14,
+    paint: {
+      "fill-color": "#0284c7",
+      "fill-opacity": 0.5
+    }
+  });
+
+  // Garis tepi
+  map.addLayer({
+    id: "pmtiles-line",
+    type: "line",
+    source: "pmtiles-src",
+    "source-layer": SOURCE_LAYER,
+    minzoom: 14,
+    paint: {
+      "line-color": "#0369a1",
+      "line-width": 1.5
+    }
+  });
+
+  // Label (opsional — jika ada kolom nama)
+  // map.addLayer({
+  //   id: "pmtiles-label",
+  //   type: "symbol",
+  //   source: "pmtiles-src",
+  //   "source-layer": SOURCE_LAYER,
+  //   minzoom: 16,
+  //   layout: {
+  //     "text-field": ["get", "name"],
+  //     "text-size": 11
+  //   },
+  //   paint: {
+  //     "text-color": "#e11d48",
+  //     "text-halo-color": "#ffffff",
+  //     "text-halo-width": 1.5
+  //   }
+  // });
+
+  // Layer ukur
+  initMeasureLayers();
+});
+
+// =============================================
+//  5. Toggle Layer
+// =============================================
+function toggleLayer(id, visible) {
+  if (map.getLayer(id)) {
+    map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+  }
+}
+
+// =============================================
+//  6. Go To Koordinat
+// =============================================
+function goToCoordinate() {
+  const lat = parseFloat(document.getElementById("input-lat").value);
+  const lng = parseFloat(document.getElementById("input-lng").value);
+  if (isNaN(lat) || isNaN(lng)) {
+    alert("Masukkan Latitude dan Longitude yang valid!");
+    return;
+  }
+  map.flyTo({ center: [lng, lat], zoom: 18, essential: true });
+
+  // Marker sementara
+  if (window._gotoMarker) window._gotoMarker.remove();
+  window._gotoMarker = new maplibregl.Marker({ color: "#ef4444" })
+    .setLngLat([lng, lat])
+    .setPopup(new maplibregl.Popup().setHTML(`<b>${lat}, ${lng}</b>`))
+    .addTo(map);
+}
+
+// =============================================
+//  7. Fitur Pengukuran (Turf.js)
+// =============================================
+let measureMode = null; // 'distance' | 'area' | null
+let measurePoints = [];
+
+function initMeasureLayers() {
+  map.addSource("measure-src", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] }
+  });
+
+  map.addLayer({
+    id: "measure-line",
+    type: "line",
+    source: "measure-src",
+    paint: {
+      "line-color": "#ef4444",
+      "line-width": 2.5,
+      "line-dasharray": [2, 2]
+    }
+  });
+
+  map.addLayer({
+    id: "measure-fill",
+    type: "fill",
+    source: "measure-src",
+    paint: {
+      "fill-color": "#ef4444",
+      "fill-opacity": 0.12
+    }
+  });
+
+  map.addLayer({
+    id: "measure-point",
+    type: "circle",
+    source: "measure-src",
+    paint: {
+      "circle-radius": 5,
+      "circle-color": "#ef4444",
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff"
+    }
+  });
+}
+
+function toggleMeasure(mode) {
+  // Jika mode sama → matikan
+  if (measureMode === mode) {
+    measureMode = null;
+    measurePoints = [];
+    clearMeasureGraphics();
+    updateToolbar();
+    return;
+  }
+
+  // Ganti mode → reset
+  measureMode = mode;
+  measurePoints = [];
+  clearMeasureGraphics();
+  updateToolbar();
+
+  const bar = document.getElementById("measure-bar");
+  bar.style.display = "block";
+  bar.textContent =
+    mode === "distance"
+      ? "📏 Klik peta untuk titik pengukuran jarak"
+      : "📐 Klik peta untuk titik pengukuran luas";
+}
+
+function updateToolbar() {
+  document.getElementById("btn-distance").classList.toggle("active", measureMode === "distance");
+  document.getElementById("btn-area").classList.toggle("active", measureMode === "area");
+  map.getCanvas().style.cursor = measureMode ? "crosshair" : "";
+}
+
+function clearMeasureGraphics() {
+  if (map.getSource("measure-src")) {
+    map.getSource("measure-src").setData({
+      type: "FeatureCollection",
+      features: []
+    });
+  }
+  document.getElementById("measure-bar").style.display = "none";
+}
+
+// Klik peta
+map.on("click", (e) => {
+  if (!measureMode) return;
+  measurePoints.push([e.lngLat.lng, e.lngLat.lat]);
+  renderMeasurement();
+});
+
+// Cegah double-click zoom saat mode ukur
+map.on("dblclick", (e) => {
+  if (measureMode) e.preventDefault();
+});
+
+function renderMeasurement() {
+  const features = measurePoints.map((pt) => turf.point(pt));
+  const bar = document.getElementById("measure-bar");
+  bar.style.display = "block";
+
+  if (measureMode === "distance" && measurePoints.length > 1) {
+    const line = turf.lineString(measurePoints);
+    const dist = turf.length(line, { units: "meters" });
+    features.push(line);
+
+    bar.textContent =
+      dist > 1000
+        ? `📏 ${measurePoints.length} titik — ${(dist / 1000).toFixed(2)} km`
+        : `📏 ${measurePoints.length} titik — ${dist.toFixed(1)} m`;
+
+  } else if (measureMode === "area" && measurePoints.length > 2) {
+    const polyCoords = [...measurePoints, measurePoints[0]];
+    const polygon = turf.polygon([polyCoords]);
+    const area = turf.area(polygon);
+    features.push(polygon);
+
+    bar.textContent =
+      area > 10000
+        ? `📐 ${measurePoints.length} titik — ${(area / 10000).toFixed(2)} Ha`
+        : `📐 ${measurePoints.length} titik — ${area.toFixed(1)} m²`;
+  }
+
+  if (map.getSource("measure-src")) {
+    map.getSource("measure-src").setData(turf.featureCollection(features));
+  }
+}
+</script>
+
+</body>
+</html>
